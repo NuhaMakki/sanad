@@ -1,0 +1,305 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         String   // STUDENT | ADVISOR | STAFF | ADMIN
+  name         String
+  createdAt    DateTime @default(now())
+
+  student         Student?
+  advisor         Advisor?
+  staff           Staff?
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+  reportTemplates ReportTemplate[]
+  ticketMessages  TicketMessage[]
+  chatbotSessions ChatbotSession[]
+}
+
+model College {
+  id          String       @id @default(cuid())
+  name        String
+  code        String       @unique
+  departments Department[]
+  students    Student[]
+  advisors    Advisor[]
+}
+
+model Department {
+  id           String        @id @default(cuid())
+  name         String
+  code         String
+  collegeId    String
+  college      College       @relation(fields: [collegeId], references: [id])
+  students     Student[]
+  advisors     Advisor[]
+  serviceUnits ServiceUnit[]
+  courses      Course[]
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id])
+  studentNumber  String   @unique
+  collegeId      String
+  college        College  @relation(fields: [collegeId], references: [id])
+  departmentId   String
+  department     Department @relation(fields: [departmentId], references: [id])
+  advisorId      String?
+  advisor        Advisor? @relation(fields: [advisorId], references: [id])
+  year           Int      @default(1)
+  academicStatus String   @default("ACTIVE") // ACTIVE | SUSPENDED | GRADUATED | WITHDRAWN
+  gpa            Float    @default(0)
+  isGraduating   Boolean  @default(false)
+  warningCount   Int      @default(0)
+  lastActivityAt DateTime @default(now())
+
+  queueTickets      QueueTicket[]
+  riskScores        RiskScore[]
+  academicRecords   AcademicRecord[]
+  attendanceRecords AttendanceRecord[]
+  advisorReports    AdvisorReport[]   @relation("StudentReports")
+  appointments      Appointment[]
+}
+
+model Advisor {
+  id           String     @id @default(cuid())
+  userId       String     @unique
+  user         User       @relation(fields: [userId], references: [id])
+  collegeId    String
+  college      College    @relation(fields: [collegeId], references: [id])
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  students     Student[]
+  reports      AdvisorReport[]
+  appointments Appointment[]
+}
+
+model Staff {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  user          User        @relation(fields: [userId], references: [id])
+  serviceUnitId String
+  serviceUnit   ServiceUnit @relation(fields: [serviceUnitId], references: [id])
+  isAvailable   Boolean     @default(true)
+  officeHours   String      @default("{}")
+}
+
+model ServiceUnit {
+  id           String      @id @default(cuid())
+  name         String
+  type         String
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  isAvailable  Boolean     @default(true)
+  officeHours  String      @default("{}")
+  description  String      @default("")
+
+  staff      Staff[]
+  issueTypes IssueType[]
+  tickets    QueueTicket[]
+}
+
+model IssueType {
+  id            String      @id @default(cuid())
+  name          String
+  serviceUnitId String
+  serviceUnit   ServiceUnit @relation(fields: [serviceUnitId], references: [id])
+  priority      String      @default("NORMAL") // LOW | NORMAL | HIGH
+  description   String      @default("")
+
+  tickets QueueTicket[]
+}
+
+model QueueTicket {
+  id            String    @id @default(cuid())
+  studentId     String
+  student       Student   @relation(fields: [studentId], references: [id])
+  serviceUnitId String
+  serviceUnit   ServiceUnit @relation(fields: [serviceUnitId], references: [id])
+  issueTypeId   String
+  issueType     IssueType @relation(fields: [issueTypeId], references: [id])
+  status        String    @default("WAITING") // WAITING | SERVING | TRANSFERRED | RESOLVED | CANCELLED
+  priorityScore Int       @default(50)
+  locationType  String    @default("ONCAMPUS") // ONCAMPUS | OFFCAMPUS
+  notes         String    @default("")
+  chatSummary   String    @default("")
+  staffNotes    String    @default("")
+  staffMessage  String    @default("")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  resolvedAt    DateTime?
+
+  messages TicketMessage[]
+}
+
+model TicketMessage {
+  id         String      @id @default(cuid())
+  ticketId   String
+  ticket     QueueTicket @relation(fields: [ticketId], references: [id])
+  senderId   String
+  sender     User        @relation(fields: [senderId], references: [id])
+  content    String
+  isInternal Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+}
+
+model ChatbotSession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  ticketId  String?
+  context   String   @default("GENERAL") // QUEUE | GENERAL
+  createdAt DateTime @default(now())
+
+  messages ChatbotMessage[]
+}
+
+model ChatbotMessage {
+  id        String         @id @default(cuid())
+  sessionId String
+  session   ChatbotSession @relation(fields: [sessionId], references: [id])
+  role      String         // USER | ASSISTANT
+  content   String
+  createdAt DateTime       @default(now())
+}
+
+model RiskScore {
+  id                String   @id @default(cuid())
+  studentId         String
+  student           Student  @relation(fields: [studentId], references: [id])
+  score             Int      @default(0)
+  level             String   @default("SAFE") // SAFE | NORMAL | EARLY_RISK | PROBABLE_RISK | HIGH_RISK
+  reasons           String   @default("[]")
+  recommendations   String   @default("[]")
+  needsUrgentAction Boolean  @default(false)
+  calculatedAt      DateTime @default(now())
+}
+
+model Course {
+  id           String     @id @default(cuid())
+  name         String
+  code         String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  credits      Int        @default(3)
+
+  academicRecords   AcademicRecord[]
+  attendanceRecords AttendanceRecord[]
+}
+
+model AcademicRecord {
+  id              String  @id @default(cuid())
+  studentId       String
+  student         Student @relation(fields: [studentId], references: [id])
+  courseId        String
+  course          Course  @relation(fields: [courseId], references: [id])
+  semester        String
+  midtermGrade    Float?
+  finalGrade      Float?
+  totalGrade      Float?
+  gradePercentage Float?
+}
+
+model AttendanceRecord {
+  id              String  @id @default(cuid())
+  studentId       String
+  student         Student @relation(fields: [studentId], references: [id])
+  courseId        String
+  course          Course  @relation(fields: [courseId], references: [id])
+  semester        String
+  totalClasses    Int     @default(0)
+  attendedClasses Int     @default(0)
+  percentage      Float   @default(100)
+}
+
+model AdvisorReport {
+  id            String          @id @default(cuid())
+  advisorId     String
+  advisor       Advisor         @relation(fields: [advisorId], references: [id])
+  studentId     String
+  student       Student         @relation("StudentReports", fields: [studentId], references: [id])
+  type          String
+  content       String
+  isAiGenerated Boolean         @default(false)
+  templateId    String?
+  template      ReportTemplate? @relation(fields: [templateId], references: [id])
+  createdAt     DateTime        @default(now())
+}
+
+model ReportTemplate {
+  id        String        @id @default(cuid())
+  name      String
+  type      String
+  content   String
+  createdBy String
+  creator   User          @relation(fields: [createdBy], references: [id])
+  createdAt DateTime      @default(now())
+
+  reports AdvisorReport[]
+}
+
+model Notification {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  type              String
+  title             String
+  body              String
+  isRead            Boolean  @default(false)
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  action      String
+  targetType  String
+  targetId    String
+  details     String   @default("{}")
+  isAutomated Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model PriorityRule {
+  id              String  @id @default(cuid())
+  name            String
+  condition       String
+  scoreAdjustment Int
+  isActive        Boolean @default(true)
+  description     String  @default("")
+}
+
+model KnowledgeSource {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String
+  createdAt DateTime @default(now())
+}
+
+model Appointment {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  advisorId String
+  advisor   Advisor  @relation(fields: [advisorId], references: [id])
+  date      DateTime
+  status    String   @default("PENDING") // PENDING | CONFIRMED | CANCELLED | COMPLETED
+  notes     String   @default("")
+}
